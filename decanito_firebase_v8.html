@@ -719,7 +719,8 @@ h1 .ed{font-size:.4em;letter-spacing:5px;color:var(--amarillo-soft);display:bloc
 .ed-bar::-webkit-scrollbar{display:none;}
 .ed-btn{flex-shrink:0;padding:7px 14px;border:1px solid var(--border2);border-bottom:none;background:var(--card);color:var(--muted2);cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;border-radius:8px 8px 0 0;transition:all .2s;}
 .ed-btn.active{background:var(--rojo);border-color:var(--rojo);color:#fff;}
-.ed-btn.arch{opacity:.6;}
+.ed-btn.prueba{border-color:rgba(76,175,80,.4);color:#81c784;}
+.ed-btn.prueba.active{background:linear-gradient(135deg,#1b5e20,#2e7d32);border-color:#2e7d32;color:#fff;}
 .btn-add-ed{flex-shrink:0;padding:6px 12px;border:1px dashed var(--border2);border-bottom:none;background:transparent;color:var(--amarillo);cursor:pointer;font-size:20px;border-radius:8px 8px 0 0;}
 .nav{display:flex;gap:4px;padding:10px 0 0;}
 .nav-btn{padding:8px 16px;border:1px solid var(--border2);border-bottom:none;background:var(--card);color:var(--muted2);cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;border-radius:8px 8px 0 0;transition:all .2s;white-space:nowrap;}
@@ -1467,30 +1468,15 @@ table.bft input::placeholder{color:var(--muted);}
       </div>
       <div class="cfg-section"><div class="cfg-title">📋 Categorías</div><div id="CfgCatList"></div><button class="cfg-add-btn" onclick="cfgAddCat()">＋ Agregar categoría</button></div>
       <div class="cfg-section"><div class="cfg-title">🏟️ Canchas</div><div id="CfgCanchaList"></div><button class="cfg-add-btn" onclick="cfgAddCancha()">＋ Agregar cancha</button></div>
-      <!-- Links para compartir -->
-      <div class="share-box">
-        <div class="share-title">🔗 Compartir por Google Drive</div>
-        <div style="font-size:11px;color:var(--muted2);margin-bottom:10px;line-height:1.6;">
-          1. Subí este archivo a Google Drive<br>
-          2. Clic derecho → Compartir → "Cualquier persona con el enlace"<br>
-          3. Copiá el ID del link (la parte larga entre <code style="color:#ffd600;">/d/</code> y <code style="color:#ffd600;">/view</code>)<br>
-          4. Pegalo acá abajo:
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-          <input id="DriveIDInput" type="text" placeholder="Ej: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-            style="flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:7px;padding:8px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;outline:none;"
-            oninput="generarLinksShare(this.value)"
-            onfocus="this.style.borderColor='var(--amarillo)'" onblur="this.style.borderColor='var(--border2)'">
-          <button onclick="generarLinksShare(document.getElementById('DriveIDInput').value)"
-            style="padding:8px 14px;border-radius:7px;border:1px solid var(--amarillo);background:rgba(255,214,0,.1);color:var(--amarillo);cursor:pointer;font-size:12px;white-space:nowrap;">
-            🔗 Generar
-          </button>
-        </div>
-        <div id="ShareLinksResult" style="display:none;flex-direction:column;gap:8px;">
-          <!-- Se genera dinámicamente -->
-        </div>
-        <div id="ShareLinksPlaceholder" style="font-size:11px;color:var(--muted);font-style:italic;">
-          Pegá el ID de Drive para ver los links listos para WhatsApp
+      <div class="cfg-section">
+        <div class="cfg-title">🔗 Link del Sistema</div>
+        <div class="cfg-minfo">Este es el link que compartís con planilleros y padres. Es siempre el mismo.</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="flex:1;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:7px;padding:8px 12px;font-size:11px;color:var(--amarillo);font-family:monospace;word-break:break-all;" id="CfgLinkDisplay">
+            https://skielm.github.io/Decanito-Femenino/decanito_firebase_v8.html
+          </div>
+          <button onclick="copiarLink(document.getElementById('CfgLinkDisplay').textContent.trim(), this)" style="padding:8px 12px;border-radius:7px;border:1px solid var(--border2);background:transparent;color:var(--muted2);cursor:pointer;font-size:12px;flex-shrink:0;">📋 Copiar</button>
+          <button onclick="compartirWhatsApp('⚽ *DECANITO FEMENINO*\n\nSeguí los resultados en vivo:\nhttps://skielm.github.io/Decanito-Femenino/decanito_firebase_v8.html\n\n👉 Abrí y tocá \\"Ver el Torneo\\"')" style="padding:8px 12px;border-radius:7px;border:1px solid rgba(76,175,80,.4);background:rgba(76,175,80,.08);color:#81c784;cursor:pointer;font-size:12px;flex-shrink:0;">💬 WhatsApp</button>
         </div>
       </div>
     </div>
@@ -1603,7 +1589,7 @@ table.bft input::placeholder{color:var(--muted);}
       <div class="logo-upload-lbl">Logo torneo</div>
     </div>
     <div style="text-align:center;flex:1;">
-      <div class="badge">⚽ Sorteo Oficial</div>
+      <div class="badge">⚽ Programa Oficial</div>
       <h1 id="HTitle">DECANITO<br><span class="am" id="HSubtitle">FEMENINO</span><span class="ed" id="HEd">1ERA EDICIÓN</span></h1>
       <p class="hsub" id="HClub">Club Atlético Sarmiento</p>
       <div class="hdots"><span></span><span></span><span></span><span></span><span></span></div>
@@ -2900,6 +2886,17 @@ function confirmarRoja() {
 //  VISTA ESPECTADOR
 // ═══════════════════════════════════════════════════
 function renderEspectador() {
+  // Solo mostrar ediciones no-prueba para espectadores
+  const edicionesPublicas = app.ediciones.filter(e => !e.prueba && !e.archived);
+  const edActual = ed();
+  // Si la edición actual es de prueba, cambiar a la primera pública
+  if (edActual.prueba && edicionesPublicas.length > 0) {
+    // No cambiar app.cur (para el admin), solo mostrar la primera pública
+    window._espEdId = edicionesPublicas[edicionesPublicas.length - 1].id;
+  } else {
+    window._espEdId = app.cur;
+  }
+
   // Nav tabs
   document.getElementById('EspNav').innerHTML = [
     { id: 'resultados', label: '⚽ Resultados' },
@@ -3168,13 +3165,22 @@ window.loadFromFirebase = function(fbData) {
   const localRaw = localStorage.getItem(KEY);
   const localApp = localRaw ? JSON.parse(localRaw) : null;
   app = { ...fbData };
-  // Restaurar campos que podrían no venir de Firebase
   if (!app.pins && localApp && localApp.pins) app.pins = localApp.pins;
   if (!app.logo && localApp && localApp.logo) app.logo = localApp.logo;
   if (!app.escudo && localApp && localApp.escudo) app.escudo = localApp.escudo;
   if (!app.sponsors) app.sponsors = (localApp && localApp.sponsors) || [];
   if (!app.driveId && localApp && localApp.driveId) app.driveId = localApp.driveId;
-  // Restaurar equipos DB desde Firebase si vino
+
+  // Deduplicar ediciones
+  const seen = new Set();
+  const unique = [];
+  for (const e of app.ediciones) {
+    const key = e.nombre + '_' + e.anio;
+    if (!seen.has(key)) { seen.add(key); unique.push(e); }
+  }
+  app.ediciones = unique;
+  if (!app.ediciones.find(e => e.id === app.cur)) app.cur = app.ediciones[0].id;
+
   if (window._fbEquiposDB && window._fbEquiposDB.length > 0) {
     equiposDB = window._fbEquiposDB;
     try { localStorage.setItem(DB_KEY, JSON.stringify(equiposDB)); } catch(e) {}
@@ -3193,6 +3199,25 @@ window.initLocal = function() {
     const e = newEd('1era Edición', new Date().getFullYear());
     app = { ediciones: [e], cur: e.id };
     save();
+  } else {
+    // Deduplicar ediciones con mismo nombre (problema de arranques múltiples)
+    const seen = new Set();
+    const unique = [];
+    for (const ed of app.ediciones) {
+      const key = ed.nombre + '_' + ed.anio;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(ed);
+      }
+    }
+    if (unique.length < app.ediciones.length) {
+      app.ediciones = unique;
+      // Asegurarse que cur apunte a una edición válida
+      if (!app.ediciones.find(e => e.id === app.cur)) {
+        app.cur = app.ediciones[0].id;
+      }
+      save();
+    }
   }
   refreshDynamic();
 };
@@ -3228,7 +3253,56 @@ function arrancar(){
   };
 }
 function refreshDynamic(){CATS=getCatNames();CCFG=buildCCFG();CCLS=buildCCLS();}
-function renderEdBar(){const e=ed();document.getElementById('HEd').textContent=e.nombre.toUpperCase();document.getElementById('EdBar').innerHTML=app.ediciones.map(x=>`<button class="ed-btn${x.archived?' arch':''}${x.id===app.cur?' active':''}" onclick="switchEd('${x.id}')">${x.archived?'📦':'🏆'} ${x.nombre}</button>`).join('')+`<button class="btn-add-ed" onclick="om('MNE')">＋</button>`;const arch=e.archived;['BtnCfg'].forEach(id=>{const b=document.getElementById(id);if(b){b.style.opacity=arch?'.4':'1';b.style.pointerEvents=arch?'none':'';}});}
+function renderEdBar(){
+  const e=ed();
+  document.getElementById('HEd').textContent=e.nombre.toUpperCase();
+  document.getElementById('EdBar').innerHTML=app.ediciones.map(x=>{
+    const isPrueba = x.prueba;
+    const isActive = x.id===app.cur;
+    const badge = isPrueba ? '🧪' : (x.archived ? '📦' : '🏆');
+    const cls = `ed-btn${x.archived?' arch':''}${isActive?' active':''}${isPrueba?' prueba':''}`;
+    return `<div style="display:flex;align-items:flex-end;gap:0;">
+      <button class="${cls}" onclick="switchEd('${x.id}')">${badge} ${x.nombre}</button>
+      ${isActive && app.ediciones.length > 1 ?
+        `<button onclick="eliminarEdicion('${x.id}')" title="Eliminar esta edición"
+          style="margin-bottom:0;padding:4px 6px;border:1px solid rgba(211,47,47,.4);border-bottom:none;background:rgba(211,47,47,.1);color:#ff6b6b;cursor:pointer;border-radius:6px 6px 0 0;font-size:11px;">🗑️</button>`
+        : ''}
+    </div>`;
+  }).join('')+
+  `<button class="btn-add-ed" onclick="om('MNE')" title="Nueva edición">＋</button>
+   <button class="btn-add-ed" onclick="crearEdPrueba()" title="Crear edición de prueba" style="color:#81c784;border-color:rgba(76,175,80,.4);">🧪</button>`;
+
+  const arch=e.archived;
+  ['BtnCfg'].forEach(id=>{const b=document.getElementById(id);if(b){b.style.opacity=arch?'.4':'1';b.style.pointerEvents=arch?'none':'';}});
+}
+
+function eliminarEdicion(id) {
+  if (app.ediciones.length <= 1) { toast('❌ Debe haber al menos una edición'); return; }
+  const edNombre = app.ediciones.find(e=>e.id===id)?.nombre || '';
+  mostrarConfirm(
+    `¿Eliminar <strong>${edNombre}</strong>?`,
+    'Se borrarán todos los datos de esta edición. Esta acción no se puede deshacer.',
+    () => {
+      app.ediciones = app.ediciones.filter(e => e.id !== id);
+      if (app.cur === id) app.cur = app.ediciones[0].id;
+      save();
+      catIdx=0; fCatIdx=0; pCatIdx=0; cCatIdx=0;
+      renderEdBar(); renderAll(); sec('sorteo');
+      toast('🗑️ Edición eliminada');
+    }
+  );
+}
+
+function crearEdPrueba() {
+  const e = newEd('Edición de Prueba', new Date().getFullYear());
+  e.prueba = true;
+  app.ediciones.push(e);
+  app.cur = e.id;
+  save();
+  catIdx=0; fCatIdx=0;
+  renderEdBar(); renderAll(); sec('sorteo');
+  toast('🧪 Edición de prueba creada — no visible para espectadores');
+}
 function switchEd(id){app.cur=id;catIdx=0;fCatIdx=0;pCatIdx=0;cCatIdx=0;fDia=0;save();refreshDynamic();renderEdBar();renderAll();sec('sorteo');loadLogoEscudo();}
 function crearEd(){const nom=document.getElementById('NEN').value.trim();const anio=parseInt(document.getElementById('NEY').value)||new Date().getFullYear();if(!nom){toast('❌ Ingresá un nombre');return;}const e=newEd(nom,anio);app.ediciones.push(e);app.cur=e.id;save();cm('MNE');document.getElementById('NEN').value='';document.getElementById('NEY').value='';catIdx=0;fCatIdx=0;renderEdBar();renderAll();sec('sorteo');toast('🏆 Edición creada');}
 function subirLogo(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=e=>{app.logo=e.target.result;save();document.getElementById('LogoImg').src=e.target.result;document.getElementById('LogoImg').style.display='';document.getElementById('LogoPlaceholder').style.display='none';toast('✅ Logo actualizado');};r.readAsDataURL(input.files[0]);}
