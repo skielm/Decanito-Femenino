@@ -3157,7 +3157,17 @@ function previewGrupos(n,catCfg){if(!n||n<2)return'—';const sizes=calcGrupos(n
 function getRem(c){const enGrupos=GS.flatMap(g=>c.groups[g]||[]).map(t=>t.name);return c.teams.map(t=>t.name).filter(n=>!enGrupos.includes(n));}
 function gruposLabels(n,catNombre){const sizes=catNombre?calcGruposCat(n,catNombre):calcGrupos(n);return GS.slice(0,sizes.length);}
 function rondasGrupo(size){if(size===3)return[[[0,1]],[[0,2]],[[1,2]]];if(size===4)return[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]];if(size===5){const rondas=[];let pos=[0,1,2,3,4];for(let r=0;r<5;r++){rondas.push([[pos[0],pos[3]],[pos[1],pos[2]]]);pos=[pos[0],pos[4],...pos.slice(1,4)];}return rondas;}return[];}
-function newEd(nom,anio,cfgCats,cfgCanchas){const id='ed_'+Date.now();const catsCfg=cfgCats||DEFAULT_CATS;const canchasCfg=cfgCanchas||DEFAULT_CANCHAS;const catsData={};catsCfg.forEach(c=>{catsData[c.nombre]={n:Math.min(c.maxEq||16,16),teams:Array.from({length:Math.min(c.maxEq||16,16)},(_,i)=>({name:'Equipo '+(i+1),shield:null})),groups:{A:[],B:[],C:[],D:[]},drawn:0,results:{}};});const bf={};catsCfg.forEach(c=>{bf[c.nombre]={};});return{id,nombre:nom,anio,archived:false,config:{cats:catsCfg,canchas:canchasCfg},cats:catsData,bf,planillas:{}};}
+function newEd(nom,anio,cfgCats,cfgCanchas){
+  const id='ed_'+Date.now();
+  // Si no se pasan cats/canchas, la edición empieza VACÍA — el admin la configura
+  const catsCfg=cfgCats||[];
+  const canchasCfg=cfgCanchas||[];
+  const catsData={};
+  catsCfg.forEach(c=>{catsData[c.nombre]={n:Math.min(c.maxEq||16,16),teams:Array.from({length:Math.min(c.maxEq||16,16)},(_,i)=>({name:'Equipo '+(i+1),shield:null})),groups:{A:[],B:[],C:[],D:[]},drawn:0,results:{}};});
+  const bf={};
+  catsCfg.forEach(c=>{bf[c.nombre]={};});
+  return{id,nombre:nom,anio,archived:false,config:{cats:catsCfg,canchas:canchasCfg},cats:catsData,bf,planillas:{}};
+}
 
 // loadFromFirebase — llamado desde el módulo de Firebase si hay datos más recientes
 window.loadFromFirebase = function(fbData) {
@@ -3171,14 +3181,13 @@ window.loadFromFirebase = function(fbData) {
   if (!app.sponsors) app.sponsors = (localApp && localApp.sponsors) || [];
   if (!app.driveId && localApp && localApp.driveId) app.driveId = localApp.driveId;
 
-  // Deduplicar ediciones
-  const seen = new Set();
-  const unique = [];
-  for (const e of app.ediciones) {
-    const key = e.nombre + '_' + e.anio;
-    if (!seen.has(key)) { seen.add(key); unique.push(e); }
-  }
-  app.ediciones = unique;
+  // Deduplicar ediciones por ID
+  const seenIds = new Set();
+  app.ediciones = app.ediciones.filter(e => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    return true;
+  });
   if (!app.ediciones.find(e => e.id === app.cur)) app.cur = app.ediciones[0].id;
 
   if (window._fbEquiposDB && window._fbEquiposDB.length > 0) {
@@ -3196,28 +3205,20 @@ window.loadFromFirebase = function(fbData) {
 window.initLocal = function() {
   app = load();
   if (!app || !app.ediciones || !app.ediciones.length) {
-    const e = newEd('1era Edición', new Date().getFullYear());
-    app = { ediciones: [e], cur: e.id };
+    // Primera vez — crear edición vacía
+    const e = newEd('1era Edición', new Date().getFullYear(), [], []);
+    app = { ediciones:[e], cur:e.id, sponsors:[], pins:{} };
     save();
   } else {
-    // Deduplicar ediciones con mismo nombre (problema de arranques múltiples)
-    const seen = new Set();
-    const unique = [];
-    for (const ed of app.ediciones) {
-      const key = ed.nombre + '_' + ed.anio;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(ed);
-      }
-    }
-    if (unique.length < app.ediciones.length) {
-      app.ediciones = unique;
-      // Asegurarse que cur apunte a una edición válida
-      if (!app.ediciones.find(e => e.id === app.cur)) {
-        app.cur = app.ediciones[0].id;
-      }
-      save();
-    }
+    // Deduplicar por ID (no por nombre, porque puede haber dos ediciones con mismo nombre en años distintos)
+    const seenIds = new Set();
+    app.ediciones = app.ediciones.filter(e => {
+      if (seenIds.has(e.id)) return false;
+      seenIds.add(e.id);
+      return true;
+    });
+    if (!app.ediciones.find(e => e.id === app.cur)) app.cur = app.ediciones[0].id;
+    if (!app.sponsors) app.sponsors = [];
   }
   refreshDynamic();
 };
@@ -3242,7 +3243,7 @@ function arrancar(){
       mostrarModo('menu');
       const ls = document.getElementById('LoadingScreen');
       if (ls) ls.style.display = 'none';
-      setSyncOk && setSyncOk(false);
+      if (window.setSyncIndicator) setSyncIndicator(false);
     }
   }, 8000);
   // Si initLocal ya fue definido por el módulo Firebase, limpiar el timer cuando se use
@@ -3294,17 +3295,34 @@ function eliminarEdicion(id) {
 }
 
 function crearEdPrueba() {
-  const e = newEd('Edición de Prueba', new Date().getFullYear());
+  const e = newEd('Edición de Prueba', new Date().getFullYear(), [], []);
   e.prueba = true;
   app.ediciones.push(e);
   app.cur = e.id;
   save();
   catIdx=0; fCatIdx=0;
+  refreshDynamic();
   renderEdBar(); renderAll(); sec('sorteo');
-  toast('🧪 Edición de prueba creada — no visible para espectadores');
+  toast('🧪 Edición de prueba creada — configurala desde ⚙️ Configurar');
 }
 function switchEd(id){app.cur=id;catIdx=0;fCatIdx=0;pCatIdx=0;cCatIdx=0;fDia=0;save();refreshDynamic();renderEdBar();renderAll();sec('sorteo');loadLogoEscudo();}
-function crearEd(){const nom=document.getElementById('NEN').value.trim();const anio=parseInt(document.getElementById('NEY').value)||new Date().getFullYear();if(!nom){toast('❌ Ingresá un nombre');return;}const e=newEd(nom,anio);app.ediciones.push(e);app.cur=e.id;save();cm('MNE');document.getElementById('NEN').value='';document.getElementById('NEY').value='';catIdx=0;fCatIdx=0;renderEdBar();renderAll();sec('sorteo');toast('🏆 Edición creada');}
+function crearEd(){
+  const nom=document.getElementById('NEN').value.trim();
+  const anio=parseInt(document.getElementById('NEY').value)||new Date().getFullYear();
+  if(!nom){toast('❌ Ingresá un nombre');return;}
+  // Nueva edición VACÍA — el admin la configura desde ⚙️
+  const e=newEd(nom,anio,[],[]);
+  app.ediciones.push(e);
+  app.cur=e.id;
+  save();
+  cm('MNE');
+  document.getElementById('NEN').value='';
+  document.getElementById('NEY').value='';
+  catIdx=0;fCatIdx=0;
+  refreshDynamic();
+  renderEdBar();renderAll();sec('sorteo');
+  toast('🏆 Edición creada — configurala desde ⚙️ Configurar');
+}
 function subirLogo(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=e=>{app.logo=e.target.result;save();document.getElementById('LogoImg').src=e.target.result;document.getElementById('LogoImg').style.display='';document.getElementById('LogoPlaceholder').style.display='none';toast('✅ Logo actualizado');};r.readAsDataURL(input.files[0]);}
 function subirEscudo(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=e=>{app.escudo=e.target.result;save();document.getElementById('EscudoImg').src=e.target.result;document.getElementById('EscudoImg').style.display='';document.getElementById('EscudoPlaceholder').style.display='none';toast('✅ Escudo actualizado');};r.readAsDataURL(input.files[0]);}
 function loadLogoEscudo(){if(app.logo){document.getElementById('LogoImg').src=app.logo;document.getElementById('LogoImg').style.display='';document.getElementById('LogoPlaceholder').style.display='none';}else{document.getElementById('LogoImg').style.display='none';document.getElementById('LogoPlaceholder').style.display='';}if(app.escudo){document.getElementById('EscudoImg').src=app.escudo;document.getElementById('EscudoImg').style.display='';document.getElementById('EscudoPlaceholder').style.display='none';}else{document.getElementById('EscudoImg').style.display='none';document.getElementById('EscudoPlaceholder').style.display='';}}
