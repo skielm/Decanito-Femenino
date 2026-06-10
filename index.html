@@ -723,7 +723,7 @@ h1 .ed{font-size:.4em;letter-spacing:5px;color:var(--amarillo-soft);display:bloc
 .ed-btn.prueba.active{background:linear-gradient(135deg,#1b5e20,#2e7d32);border-color:#2e7d32;color:#fff;}
 .btn-add-ed{flex-shrink:0;padding:6px 12px;border:1px dashed var(--border2);border-bottom:none;background:transparent;color:var(--amarillo);cursor:pointer;font-size:20px;border-radius:8px 8px 0 0;}
 .nav{display:flex;gap:4px;padding:10px 0 0;}
-.nav-btn{padding:8px 16px;border:1px solid var(--border2);border-bottom:none;background:var(--card);color:var(--muted2);cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;border-radius:8px 8px 0 0;transition:all .2s;white-space:nowrap;}
+.nav-btn{padding:7px 13px;border:1px solid var(--border2);background:var(--card);color:var(--muted2);cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:1px;border-radius:7px;transition:all .2s;white-space:nowrap;}
 .nav-btn.active{background:var(--rojo);border-color:var(--rojo);color:#fff;}
 .toolbar{display:flex;gap:6px;padding:8px 0;flex-wrap:wrap;border-bottom:1px solid var(--border);}
 .tbtn{display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted2);cursor:pointer;font-size:11px;transition:all .2s;white-space:nowrap;}
@@ -1607,7 +1607,8 @@ table.bft input::placeholder{color:var(--muted);}
 
 <div class="wrap">
   <div class="ed-bar" id="EdBar"></div>
-  <div class="nav" style="overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;">
+  <!-- Fila 1: secciones principales -->
+  <div style="display:flex;gap:4px;padding:10px 0 4px;flex-wrap:wrap;">
     <button class="nav-btn active" id="NDB" onclick="sec('equiposdb')">🗄️ Equipos</button>
     <button class="nav-btn" id="NINSC" onclick="sec('inscripciones')">📝 Inscripciones</button>
     <button class="nav-btn" id="NBF" onclick="sec('buenafe')">📋 Buena Fe</button>
@@ -1615,10 +1616,13 @@ table.bft input::placeholder{color:var(--muted);}
     <button class="nav-btn" id="NF" onclick="sec('fixture')">📅 Fixture</button>
     <button class="nav-btn" id="NP" onclick="sec('posiciones')">📊 Posiciones</button>
     <button class="nav-btn" id="NC" onclick="sec('cruces')">🏆 Cruces</button>
+  </div>
+  <!-- Fila 2: secciones extras -->
+  <div style="display:flex;gap:4px;padding:0 0 0;flex-wrap:wrap;border-bottom:2px solid var(--border2);padding-bottom:8px;">
     <button class="nav-btn" id="NSAN" onclick="sec('sanciones')" style="border-color:rgba(211,47,47,.4);color:#ff6b6b;">🟥 Sanciones</button>
     <button class="nav-btn" id="NEST" onclick="sec('estadisticas')" style="border-color:rgba(255,214,0,.3);color:#ffd600;">🏆 Premios</button>
     <button class="nav-btn" id="NSP" onclick="sec('sponsors')" style="border-color:rgba(100,180,255,.3);color:#90caf9;">🏢 Sponsors</button>
-    <button class="nav-btn" id="NLIMP" onclick="limpiarEdicionesDuplicadas()" style="border-color:rgba(150,150,150,.3);color:#888;" title="Limpiar ediciones duplicadas">🧹</button>
+    <button class="nav-btn" id="NLIMP" onclick="limpiarEdicionesMenu()" style="border-color:rgba(150,150,150,.3);color:#888;" title="Limpiar ediciones">🧹 Limpiar</button>
   </div>
   <div class="toolbar">
     <button class="tbtn" id="BtnCfg" onclick="abrirConfig()" style="border-color:rgba(255,214,0,.3);color:var(--amarillo);">⚙️ Configurar</button>
@@ -3310,29 +3314,77 @@ function eliminarEdicion(id) {
   );
 }
 
-// Limpieza de emergencia — elimina TODAS las ediciones duplicadas y deja solo la primera
-function limpiarEdicionesDuplicadas() {
+// Menú de limpieza — pregunta qué hacer
+function limpiarEdicionesMenu() {
+  const ediciones = app.ediciones;
+  if (ediciones.length <= 1) {
+    // Solo una edición — ofrecer borrar su contenido
+    mostrarConfirm(
+      '🧹 ¿Reiniciar esta edición?',
+      `Se borrarán <strong>todos los datos</strong> de "<strong>${ed().nombre}</strong>" — equipos, sorteo, fixture, resultados. La edición queda vacía para empezar de cero.`,
+      async () => {
+        const e = ed();
+        const cfg = e.config || { cats: [], canchas: [] };
+        // Reiniciar datos manteniendo la config
+        cfg.cats.forEach(cat => {
+          e.cats[cat.nombre] = {
+            n: cat.maxEq || 16,
+            teams: Array.from({length: cat.maxEq||16}, (_,i) => ({name:'Equipo '+(i+1), shield:null})),
+            groups: {A:[],B:[],C:[],D:[]}, drawn: 0, results: {}
+          };
+          if (e.bf) e.bf[cat.nombre] = {};
+        });
+        e.planillas = {};
+        e.suspensiones = {};
+        app._updatedAt = Date.now() + 5000;
+        localStorage.setItem(KEY, JSON.stringify(app));
+        if (window.fbSave) await window.fbSave(app);
+        catIdx=0; fCatIdx=0; pCatIdx=0; cCatIdx=0;
+        refreshDynamic(); renderEdBar(); renderAll(); sec('sorteo');
+        toast('✅ Edición reiniciada');
+      }
+    );
+    return;
+  }
+
+  // Múltiples ediciones — mostrar selector
+  const lista = ediciones.map((e, i) =>
+    `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;">
+      <span style="flex:1;font-size:13px;">${e.prueba?'🧪':'🏆'} ${e.nombre} (${e.anio})</span>
+      <button onclick="confirmarEliminarEd('${e.id}');document.getElementById('MElimEd').remove();"
+        style="padding:5px 10px;border-radius:6px;border:1px solid rgba(211,47,47,.4);background:rgba(211,47,47,.1);color:#ff6b6b;cursor:pointer;font-size:11px;">
+        🗑️ Eliminar
+      </button>
+    </div>`
+  ).join('');
+
+  const div = document.createElement('div');
+  div.id = 'MElimEd';
+  div.className = 'modal-bg open';
+  div.innerHTML = `<div class="modal" style="max-width:440px;">
+    <div class="mhead"><h2>🧹 Gestionar Ediciones</h2><button class="mclose" onclick="document.getElementById('MElimEd').remove()">✕</button></div>
+    <div class="mbody">
+      <div class="minfo" style="margin-bottom:12px;">Elegí qué edición eliminar, o reiniciá sus datos para empezar de cero.</div>
+      ${lista}
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+
+async function confirmarEliminarEd(id) {
+  const edNombre = app.ediciones.find(e=>e.id===id)?.nombre || '';
   mostrarConfirm(
-    '🧹 ¿Limpiar ediciones duplicadas?',
-    'Dejará solo <strong>una edición</strong> (la primera). Las demás se eliminarán permanentemente.',
+    `¿Eliminar <strong>${edNombre}</strong>?`,
+    'Se borrarán todos los datos. Esta acción no se puede deshacer.',
     async () => {
-      // Ordenar por fecha de creación (el ID tiene timestamp)
-      const sorted = [...app.ediciones].sort((a, b) => {
-        const ta = parseInt(a.id.replace('ed_','')) || 0;
-        const tb = parseInt(b.id.replace('ed_','')) || 0;
-        return ta - tb;
-      });
-      // Quedarse solo con la primera real (no prueba)
-      const primera = sorted.find(e => !e.prueba) || sorted[0];
-      app.ediciones = [primera];
-      app.cur = primera.id;
-      app._updatedAt = Date.now() + 10000;
+      app.ediciones = app.ediciones.filter(e => e.id !== id);
+      if (app.cur === id) app.cur = app.ediciones[0].id;
+      app._updatedAt = Date.now() + 5000;
       localStorage.setItem(KEY, JSON.stringify(app));
       if (window.fbSave) await window.fbSave(app);
       catIdx=0; fCatIdx=0; pCatIdx=0; cCatIdx=0;
-      refreshDynamic();
-      renderEdBar(); renderAll(); sec('sorteo');
-      toast('✅ Ediciones limpiadas — quedó una sola');
+      refreshDynamic(); renderEdBar(); renderAll(); sec('sorteo');
+      toast('🗑️ Edición eliminada');
     }
   );
 }
@@ -3389,10 +3441,43 @@ function cfgToggleFase(ci,cat,fid){if(!cfgBuf.canchas[ci].fases)cfgBuf.canchas[c
 function cfgToggleTodasFases(ci,cat){if(!cfgBuf.canchas[ci].fases)cfgBuf.canchas[ci].fases={};const arr=cfgBuf.canchas[ci].fases[cat]||[];if(arr.length>0){cfgBuf.canchas[ci].fases[cat]=[];}else{cfgBuf.canchas[ci].fases[cat]=TODAS_FASES.map(f=>f.id);}renderCfgCanchas();}
 function cfgAddCancha(){const newFases={};cfgBuf.cats.forEach(c=>{newFases[c.nombre]=[];});cfgBuf.canchas.push({nombre:'Cancha '+(cfgBuf.canchas.length+1),fases:newFases});renderCfgCanchas();}
 function cfgDelCancha(ci){if(cfgBuf.canchas.length<=1){toast('❌ Debe haber al menos 1 cancha');return;}cfgBuf.canchas.splice(ci,1);renderCfgCanchas();}
-function guardarConfig(){const nombres=cfgBuf.cats.map(c=>c.nombre.trim()).filter(Boolean);if(new Set(nombres).size!==nombres.length){toast('❌ Los nombres de categorías deben ser únicos');return;}if(nombres.some(n=>!n)){toast('❌ Todas las categorías deben tener nombre');return;}const e=ed();e.config={cats:cfgBuf.cats.map(c=>({...c})),canchas:cfgBuf.canchas.map(c=>({...c}))};if(!e.cats)e.cats={};if(!e.bf)e.bf={};cfgBuf.cats.forEach(cat=>{const n=cat.nombre;const maxEq=cat.maxEq||16;if(!e.cats[n]){e.cats[n]={n:maxEq,teams:Array.from({length:maxEq},(_,i)=>({name:'Equipo '+(i+1),shield:null})),groups:{A:[],B:[],C:[],D:[]},drawn:0,results:{}};}if(!e.bf[n])e.bf[n]={};});
-// Guardar PINs
-if(!app.pins)app.pins={};const pa=document.getElementById('CfgPinAdmin');if(pa&&pa.value.trim())app.pins.admin=pa.value.trim();if(!app.pins.canchas)app.pins.canchas={};cfgBuf.canchas.forEach((c,i)=>{const el=document.getElementById('CfgPinC'+i);if(el&&el.value.trim())app.pins.canchas[c.nombre]=el.value.trim();});
-save();refreshDynamic();catIdx=0;fCatIdx=0;pCatIdx=0;cCatIdx=0;cm('MCfg');renderEdBar();renderAll();toast('✅ Configuración guardada');}
+function guardarConfig(){
+  const nombres=cfgBuf.cats.map(c=>c.nombre.trim()).filter(Boolean);
+  if(new Set(nombres).size!==nombres.length){toast('❌ Los nombres de categorías deben ser únicos');return;}
+  if(nombres.some(n=>!n)){toast('❌ Todas las categorías deben tener nombre');return;}
+  const e=ed();
+  e.config={cats:cfgBuf.cats.map(c=>({...c})),canchas:cfgBuf.canchas.map(c=>({...c}))};
+  if(!e.cats)e.cats={};
+  if(!e.bf)e.bf={};
+  cfgBuf.cats.forEach(cat=>{
+    const n=cat.nombre;
+    const maxEq=cat.maxEq||16;
+    if(!e.cats[n]){
+      // Nueva categoría — crear desde cero
+      e.cats[n]={n:maxEq,teams:Array.from({length:maxEq},(_,i)=>({name:'Equipo '+(i+1),shield:null})),groups:{A:[],B:[],C:[],D:[]},drawn:0,results:{}};
+    } else if(e.cats[n].n !== maxEq) {
+      // Cambió la cantidad — actualizar solo si no hay sorteo hecho
+      if(e.cats[n].drawn === 0) {
+        e.cats[n].n = maxEq;
+        e.cats[n].teams = Array.from({length:maxEq},(_,i)=>({name:'Equipo '+(i+1),shield:null}));
+        e.cats[n].groups={A:[],B:[],C:[],D:[]};
+        e.cats[n].results={};
+      }
+    }
+    if(!e.bf[n])e.bf[n]={};
+  });
+  // Guardar PINs
+  if(!app.pins)app.pins={};
+  const pa=document.getElementById('CfgPinAdmin');
+  if(pa&&pa.value.trim())app.pins.admin=pa.value.trim();
+  if(!app.pins.canchas)app.pins.canchas={};
+  cfgBuf.canchas.forEach((c,i)=>{
+    const el=document.getElementById('CfgPinC'+i);
+    if(el&&el.value.trim())app.pins.canchas[c.nombre]=el.value.trim();
+  });
+  save();refreshDynamic();catIdx=0;fCatIdx=0;pCatIdx=0;cCatIdx=0;
+  cm('MCfg');renderEdBar();renderAll();toast('✅ Configuración guardada');
+}
 const SECS=['equiposdb','inscripciones','buenafe','sorteo','fixture','posiciones','cruces','sanciones','estadisticas','sponsors'];
 const SEC_EL={equiposdb:'SecDB',inscripciones:'SecINSC',buenafe:'SecBF',sorteo:'SecS',fixture:'SecF',posiciones:'SecP',cruces:'SecC',sanciones:'SecSAN',estadisticas:'SecEST',sponsors:'SecSP'};
 const SEC_NAV={equiposdb:'NDB',inscripciones:'NINSC',buenafe:'NBF',sorteo:'NS',fixture:'NF',posiciones:'NP',cruces:'NC',sanciones:'NSAN',estadisticas:'NEST',sponsors:'NSP'};
