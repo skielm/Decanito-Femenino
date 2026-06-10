@@ -1964,19 +1964,6 @@ function entrarAdmin() {
   loadLogoEscudo();
 }
 
-function mostrarPinPlanillero() {
-  // Mostrar opciones de cancha
-  const canchas = getCanchas();
-  document.getElementById('PinCanchas').innerHTML = canchas.map(c =>
-    `<button class="pin-cancha-btn" onclick="entrarPlanillero('${c.nombre.replace(/'/g,"\\'")}')">🏟️ ${c.nombre}</button>`
-  ).join('');
-  document.getElementById('PinScreen').classList.add('open');
-}
-
-function cerrarPin() {
-  document.getElementById('PinScreen').classList.remove('open');
-}
-
 function entrarPlanillero(cancha) {
   cerrarPin();
   planilleroCanchaActual = cancha;
@@ -1984,7 +1971,6 @@ function entrarPlanillero(cancha) {
   document.getElementById('PlCanchaBadge').textContent = cancha;
   mostrarModo('planillero');
   renderPlanillero();
-  // Escuchar cambios en tiempo real
   iniciarListenerLive();
 }
 
@@ -2906,7 +2892,8 @@ function renderEspectador() {
   document.getElementById('EspNav').innerHTML = [
     { id: 'resultados', label: '⚽ Resultados' },
     { id: 'posiciones', label: '📊 Posiciones' },
-    { id: 'cruces', label: '🏆 Cruces' }
+    { id: 'cruces', label: '🏆 Cruces' },
+    { id: 'goleadoras', label: '⭐ Goleadoras' },
   ].map(n => `<button class="esp-nav-btn${espNav === n.id ? ' active' : ''}" onclick="espSwNav('${n.id}')">${n.label}</button>`).join('');
 
   // Cat tabs
@@ -2924,7 +2911,51 @@ function renderEspectador() {
 function espSwNav(nav) { espNav = nav; renderEspectador(); }
 function espSwCat(i) { espCatIdx = i; renderEspectador(); }
 
-function renderEspectadorContent() {
+function renderEspGoleadoras(cat) {
+  const { goleadoras, arqueras } = calcEstadisticas(cat);
+  const medals = ['🥇','🥈','🥉'];
+
+  const golesHtml = goleadoras.length
+    ? goleadoras.slice(0,10).map((g,i) => `
+      <div class="stats-rank-row">
+        <div class="stats-rank-num ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${medals[i]||i+1}</div>
+        <div style="flex:1;">
+          <div class="stats-rank-name">${g.nombre}</div>
+          <div class="stats-rank-team">${g.equipo}</div>
+        </div>
+        <div class="stats-rank-val">${g.goles} ⚽</div>
+      </div>`).join('')
+    : `<div style="padding:16px;text-align:center;font-size:12px;color:#7a5a5a;">Sin datos todavía</div>`;
+
+  const arqHtml = arqueras.length
+    ? arqueras.slice(0,10).map((a,i) => `
+      <div class="stats-rank-row">
+        <div class="stats-rank-num ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${medals[i]||i+1}</div>
+        <div style="flex:1;">
+          <div class="stats-rank-name">${a.nombre}</div>
+          <div class="stats-rank-team">${a.equipo} · ${a.partidos} partido${a.partidos!==1?'s':''}</div>
+        </div>
+        <div class="stats-rank-val arq">${(a.golesRecibidos/a.partidos).toFixed(2)} 🧤</div>
+      </div>`).join('')
+    : `<div style="padding:16px;text-align:center;font-size:12px;color:#7a5a5a;">Sin datos todavía</div>`;
+
+  return `
+    <div class="stats-card">
+      <div class="stats-card-header">
+        <span style="font-size:22px;">⚽</span>
+        <div class="stats-card-title" style="color:#ffd600;">GOLEADORAS — ${cat}</div>
+      </div>
+      ${golesHtml}
+    </div>
+    <div class="stats-card">
+      <div class="stats-card-header">
+        <span style="font-size:22px;">🧤</span>
+        <div class="stats-card-title" style="color:#90caf9;">ARQUERA MENOS VENCIDA — ${cat}</div>
+      </div>
+      <div style="padding:5px 14px;font-size:10px;color:#7a5a5a;border-bottom:1px solid #2e1a1a;">Promedio goles recibidos por partido (menor = mejor)</div>
+      ${arqHtml}
+    </div>`;
+}
   const el = document.getElementById('EspContent');
   const cat = CATS[espCatIdx];
   if (!cat) { el.innerHTML = ''; return; }
@@ -2933,8 +2964,10 @@ function renderEspectadorContent() {
     el.innerHTML = renderEspResultados(cat);
   } else if (espNav === 'posiciones') {
     el.innerHTML = renderEspPosiciones(cat);
-  } else {
+  } else if (espNav === 'cruces') {
     el.innerHTML = renderEspCruces(cat);
+  } else if (espNav === 'goleadoras') {
+    el.innerHTML = renderEspGoleadoras(cat);
   }
 }
 
@@ -3053,7 +3086,6 @@ function renderEspPosiciones(cat) {
 }
 
 function renderEspCruces(cat) {
-  // Simplificado para espectadores
   const c = ed().cats[cat];
   if (!c) return '';
   const sizes = calcGruposCat(c.n, cat);
@@ -3061,47 +3093,69 @@ function renderEspCruces(cat) {
   const ng = gls.length;
   const sorteoCompleto = gls.every((g, i) => c.groups[g] && c.groups[g].length >= sizes[i]);
   const tabla = sorteoCompleto ? calcPos(cat) : {};
+  const todosjugados = todosPartidosGrupoJugados(cat);
 
   function resolverEq(pos, g) {
-    if (sorteoCompleto && tabla[g] && tabla[g][pos - 1]) return tabla[g][pos - 1].name;
+    if (sorteoCompleto && todosjugados && tabla[g] && tabla[g][pos - 1])
+      return tabla[g][pos - 1].name;
     return `${pos}° Grupo ${g}`;
   }
 
+  function matchCard(titulo, h, a, color) {
+    return `<div class="esp-partido-card" style="border-color:${color};">
+      <div class="esp-partido-meta"><span class="esp-partido-fase">${titulo}</span></div>
+      <div class="esp-vs-row">
+        <div class="esp-team"><div class="esp-team-name">${h}</div></div>
+        <div class="esp-score-wrap">
+          <div class="esp-score pending">—</div>
+          <div class="esp-score-sep">—</div>
+          <div class="esp-score pending">—</div>
+        </div>
+        <div class="esp-team"><div class="esp-team-name away">${a}</div></div>
+      </div>
+    </div>`;
+  }
+
   const phLabel = ng >= 4 ? 'Cuartos de Final' : 'Semifinal';
-  let html = `<div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:#ffd600;letter-spacing:2px;margin-bottom:10px;">🏆 Copa Oro — ${phLabel}</div>`;
+  let html = '';
 
-  const crucesOro = ng >= 4
-    ? [[1,'A',2,'B'],[1,'B',2,'A'],[1,'C',2,'D'],[1,'D',2,'C']]
-    : ng === 3 ? [[1,'A',2,'B'],[1,'B',2,'C'],[1,'C',2,'A']]
-    : [[1,'A',2,'B']];
+  // ── COPA ORO ──
+  html += `<div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:#ffd600;letter-spacing:2px;margin-bottom:10px;">🏆 Copa Oro — ${phLabel}</div>`;
 
-  crucesOro.forEach(([r1,g1,r2,g2], i) => {
-    html += `<div class="esp-partido-card" style="border-color:rgba(255,214,0,.3);">
-      <div class="esp-partido-meta"><span class="esp-partido-fase">Copa Oro · Partido ${i+1}</span></div>
-      <div class="esp-vs-row">
-        <div class="esp-team"><div class="esp-team-name">${resolverEq(r1,g1)}</div></div>
-        <div class="esp-score-wrap"><div class="esp-score pending">—</div><div class="esp-score-sep">—</div><div class="esp-score pending">—</div></div>
-        <div class="esp-team"><div class="esp-team-name away">${resolverEq(r2,g2)}</div></div>
-      </div>
-    </div>`;
-  });
+  if (ng >= 4) {
+    [[1,'A',2,'B'],[1,'B',2,'A'],[1,'C',2,'D'],[1,'D',2,'C']].forEach(([r1,g1,r2,g2],i) => {
+      html += matchCard(`Copa Oro · Cuartos ${i+1}`, resolverEq(r1,g1), resolverEq(r2,g2), 'rgba(255,214,0,.3)');
+    });
+    html += `<div style="font-size:12px;color:#7a5a5a;margin:10px 0 6px;font-family:'Bebas Neue',sans-serif;letter-spacing:1.5px;">— Semifinales: Gan.C1 vs Gan.C3 · Gan.C2 vs Gan.C4 —</div>`;
+  } else if (ng === 3) {
+    [[1,'A',2,'B'],[1,'B',2,'C'],[1,'C',2,'A']].forEach(([r1,g1,r2,g2],i) => {
+      html += matchCard(`Copa Oro · Semi ${i+1}`, resolverEq(r1,g1), resolverEq(r2,g2), 'rgba(255,214,0,.3)');
+    });
+  } else {
+    // 2 grupos → 2 semis cruzadas
+    html += matchCard('Copa Oro · Semifinal 1', resolverEq(1,'A'), resolverEq(2,'B'), 'rgba(255,214,0,.3)');
+    html += matchCard('Copa Oro · Semifinal 2', resolverEq(1,'B'), resolverEq(2,'A'), 'rgba(255,214,0,.3)');
+    html += `<div style="font-size:11px;color:#7a5a5a;margin:8px 0 6px;">— Final: Ganador Semi 1 vs Ganador Semi 2 —</div>`;
+  }
 
+  // ── COPA PLATA ──
   html += `<div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:#aaa;letter-spacing:2px;margin:16px 0 10px;">🥈 Copa Plata — ${phLabel}</div>`;
-  const crucesPlata = ng >= 4
-    ? [[3,'A',4,'B'],[3,'B',4,'A'],[3,'C',4,'D'],[3,'D',4,'C']]
-    : ng === 3 ? [[3,'A',4,'B'],[3,'B',4,'C'],[3,'C',4,'A']]
-    : [[3,'A',4,'B']];
 
-  crucesPlata.forEach(([r1,g1,r2,g2], i) => {
-    html += `<div class="esp-partido-card" style="border-color:rgba(150,150,150,.2);">
-      <div class="esp-partido-meta"><span class="esp-partido-fase">Copa Plata · Partido ${i+1}</span></div>
-      <div class="esp-vs-row">
-        <div class="esp-team"><div class="esp-team-name">${resolverEq(r1,g1)}</div></div>
-        <div class="esp-score-wrap"><div class="esp-score pending">—</div><div class="esp-score-sep">—</div><div class="esp-score pending">—</div></div>
-        <div class="esp-team"><div class="esp-team-name away">${resolverEq(r2,g2)}</div></div>
-      </div>
-    </div>`;
-  });
+  if (ng >= 4) {
+    [[3,'A',4,'B'],[3,'B',4,'A'],[3,'C',4,'D'],[3,'D',4,'C']].forEach(([r1,g1,r2,g2],i) => {
+      html += matchCard(`Copa Plata · Cuartos ${i+1}`, resolverEq(r1,g1), resolverEq(r2,g2), 'rgba(150,150,150,.2)');
+    });
+    html += `<div style="font-size:12px;color:#7a5a5a;margin:10px 0 6px;font-family:'Bebas Neue',sans-serif;letter-spacing:1.5px;">— Semifinales: Gan.C1 vs Gan.C3 · Gan.C2 vs Gan.C4 —</div>`;
+  } else if (ng === 3) {
+    [[3,'A',4,'B'],[3,'B',4,'C'],[3,'C',4,'A']].forEach(([r1,g1,r2,g2],i) => {
+      html += matchCard(`Copa Plata · Semi ${i+1}`, resolverEq(r1,g1), resolverEq(r2,g2), 'rgba(150,150,150,.2)');
+    });
+  } else {
+    html += matchCard('Copa Plata · Semifinal 1', resolverEq(3,'A'), resolverEq(4,'B'), 'rgba(150,150,150,.2)');
+    html += matchCard('Copa Plata · Semifinal 2', resolverEq(3,'B'), resolverEq(4,'A'), 'rgba(150,150,150,.2)');
+    html += `<div style="font-size:11px;color:#7a5a5a;margin:8px 0 6px;">— Final: Ganador Semi 1 vs Ganador Semi 2 —</div>`;
+  }
+
   return html;
 }
 
@@ -3927,7 +3981,21 @@ function feVerificarConflicto(){const dia=parseInt(document.getElementById('FEDi
 function feActualizarSugerencias(){const dia=parseInt(document.getElementById('FEDia').value);const todosSlots=buildSlotsConfig(feState.cat,dia);const ocupados=feState.partidos.filter(p=>p.pid!==feState.pid&&p.dia===dia).map(p=>p.hora+'|'+p.cancha);const el=document.getElementById('FESlots');if(!todosSlots.length){el.innerHTML='<span style="font-size:11px;color:var(--muted2);">Sin slots disponibles.</span>';return;}const porHora={};todosSlots.forEach(s=>{if(!porHora[s.hora])porHora[s.hora]=[];porHora[s.hora].push(s.cancha);});let html='';Object.entries(porHora).sort().forEach(([hora,canchas])=>{canchas.forEach(ca=>{const key=hora+'|'+ca;const libre=!ocupados.includes(key);html+='<button class="slot-btn '+(libre?'libre':'ocupado')+'" '+(libre?'onclick="feAplicarSlot(\''+hora+'\',\''+ca+'\','+dia+')"':'disabled')+'>'+hora+' · '+ca+'</button>';});});el.innerHTML=html||'<span style="font-size:11px;color:var(--muted2);">Sin slots.</span>';}
 function feAplicarSlot(hora,cancha,dia){document.getElementById('FEHora').value=hora;document.getElementById('FECancha').value=cancha;document.getElementById('FEDia').value=dia;feVerificarConflicto();}
 function feGuardar(){const dia=parseInt(document.getElementById('FEDia').value);const hora=document.getElementById('FEHora').value;const cancha=document.getElementById('FECancha').value;const obs=document.getElementById('FEObs').value.trim();if(!hora){toast('❌ Ingresá una hora');return;}const conflictos=feState.partidos.filter(p=>p.pid!==feState.pid&&p.dia===dia&&p.hora===hora&&p.cancha===cancha);const doGuardar=()=>{getOverrides(feState.cat)[feState.pid]={dia,hora,cancha,obs};save();cm('MFixEdit');renderFixture();toast('✅ Partido actualizado');};if(conflictos.length>0){mostrarConfirm('⚠️ Hay un conflicto','Ya existe un partido en '+cancha+' a las '+hora+'. ¿Guardás igual?',doGuardar);}else{doGuardar();}}
-function buildFixturePartidos(cat){const c=ed().cats[cat];if(!c)return[];const cfg=CCFG[cat]||{canchas:['Cancha 1'],dur:50,slot:65};const todasCanchas=getCanchas();const slotMin=cfg.slot||(cfg.dur+15);const sizes=calcGruposCat(c.n,cat);const gls=GS.slice(0,sizes.length);const ng=gls.length;const maxSize=Math.max.apply(null,sizes.length?sizes:[4]);const overrides=getOverrides(cat);function canchasDeFase(faseid){return todasCanchas.filter(ca=>ca.fases&&ca.fases[cat]&&ca.fases[cat].includes(faseid)).map(ca=>ca.nombre);}const rotIdx={};function nextCanchaFase(faseid){const lista=canchasDeFase(faseid);if(!lista.length)return cfg.canchas[0]||'Cancha 1';if(!rotIdx[faseid])rotIdx[faseid]=0;const ca=lista[rotIdx[faseid]%lista.length];rotIdx[faseid]++;return ca;}function buildSlotsDia(dia){const slotsxCancha={};todasCanchas.forEach(ca=>{const sl=[];let t=toMin(DIAS[dia].ini),fin=toMin(DIAS[dia].fin);while(t+slotMin<=fin){sl.push(toStr(t));t+=slotMin;}slotsxCancha[ca.nombre]=sl.slice();});return slotsxCancha;}const slotsxCanchaxDia=[buildSlotsDia(0),buildSlotsDia(1),buildSlotsDia(2)];function nextHoraCancha(dia,cancha){const pool=slotsxCanchaxDia[dia][cancha];if(!pool||!pool.length)return'--:--';return pool.shift();}function faseidGrupo(ri){return['ronda1','ronda2','ronda3','ronda4','ronda5'][ri]||'ronda3';}function slot(g,pos){const grp=c.groups[g]||[];return grp[pos]&&grp[pos].name?grp[pos].name:(g+(pos+1));}function posGrupo(rank,g){const grp=c.groups[g]||[];const sizeG=sizes[gls.indexOf(g)]||4;if(grp.length>=sizeG){const tabla=calcPos(cat);const eq=tabla[g]&&tabla[g][rank-1];if(eq)return eq.name;}return['','1°','2°','3°','4°'][rank]+' Gr.'+g;}const partidos=[];let pidCounter=0;function addP(dia,faseid,homeLabel,awayLabel,extra){const pid=extra.grupo?'g_'+extra.grupo+'_r'+extra.ronda+'_'+(pidCounter++):(faseid+'_'+(pidCounter++));const ov=overrides[pid]||{};const diaAuto=dia;const canchaAuto=nextCanchaFase(faseid);const horaAuto=nextHoraCancha(diaAuto,canchaAuto);const diaFinal=ov.dia!==undefined?ov.dia:diaAuto;const horaFinal=ov.hora||horaAuto;const canchaFinal=ov.cancha||canchaAuto;const obs=ov.obs||'';partidos.push({pid,dia:diaFinal,hora:horaFinal,cancha:canchaFinal,obs,fase:faseid.startsWith('ronda')?'grupo':faseid,homeLabel,awayLabel,...extra,homoReal:!!(extra.grupo&&c.groups[extra.grupo]&&c.groups[extra.grupo][extra.i1||0]),awayReal:!!(extra.grupo&&c.groups[extra.grupo]&&c.groups[extra.grupo][extra.i2||1])});}[0,1].forEach(ri=>{gls.forEach((g,gi)=>{const rondas=rondasGrupo(sizes[gi]||4);if(ri>=rondas.length)return;rondas[ri].forEach(par=>{addP(0,faseidGrupo(ri),slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:ri+1,i1:par[0],i2:par[1]});});});});const rondasSab=maxSize<=4?[2]:[2,3];rondasSab.forEach(ri=>{gls.forEach((g,gi)=>{const rondas=rondasGrupo(sizes[gi]||4);if(ri>=rondas.length)return;rondas[ri].forEach(par=>{addP(1,faseidGrupo(ri),slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:ri+1,i1:par[0],i2:par[1]});});});});function crucePares(copa){const r1=copa==='oro'?1:3,r2=copa==='oro'?2:4;if(ng>=4)return[[r1,'A',r2,'B'],[r1,'B',r2,'A'],[r1,'C',r2,'D'],[r1,'D',r2,'C']];if(ng===3)return[[r1,'A',r2,'B'],[r1,'B',r2,'C'],[r1,'C',r2,'A']];return[[r1,'A',r2,'B'],[r1,'B',r2,'A']];}['oro','plata'].forEach(copa=>{const faseid=ng>=4?'cuartos-'+copa:'semi-'+copa;crucePares(copa).forEach(p=>{addP(1,faseid,posGrupo(p[0],p[1]),posGrupo(p[2],p[3]),{copa});});});if(maxSize===5){gls.forEach((g,gi)=>{if(sizes[gi]!==5)return;const rondas=rondasGrupo(5);if(!rondas[4])return;rondas[4].forEach(par=>{addP(2,'ronda5',slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:5,i1:par[0],i2:par[1]});});});}if(ng>=4){['oro','plata'].forEach(copa=>{const L=copa.charAt(0).toUpperCase();addP(2,'semi-'+copa,'Gan.C.'+L+'1','Gan.C.'+L+'2',{copa});addP(2,'semi-'+copa,'Gan.C.'+L+'3','Gan.C.'+L+'4',{copa});});}['oro','plata'].forEach(copa=>{const L=copa.charAt(0).toUpperCase();addP(2,'final-'+copa,'Gan.Semi '+L+'1','Gan.Semi '+L+'2',{copa});});return partidos;}
+function buildFixturePartidos(cat){const c=ed().cats[cat];if(!c)return[];const cfg=CCFG[cat]||{canchas:['Cancha 1'],dur:50,slot:65};const todasCanchas=getCanchas();const slotMin=cfg.slot||(cfg.dur+15);const sizes=calcGruposCat(c.n,cat);const gls=GS.slice(0,sizes.length);const ng=gls.length;const maxSize=Math.max.apply(null,sizes.length?sizes:[4]);const overrides=getOverrides(cat);function canchasDeFase(faseid){return todasCanchas.filter(ca=>ca.fases&&ca.fases[cat]&&ca.fases[cat].includes(faseid)).map(ca=>ca.nombre);}const rotIdx={};function nextCanchaFase(faseid){const lista=canchasDeFase(faseid);if(!lista.length)return cfg.canchas[0]||'Cancha 1';if(!rotIdx[faseid])rotIdx[faseid]=0;const ca=lista[rotIdx[faseid]%lista.length];rotIdx[faseid]++;return ca;}function buildSlotsDia(dia){const slotsxCancha={};todasCanchas.forEach(ca=>{const sl=[];let t=toMin(DIAS[dia].ini),fin=toMin(DIAS[dia].fin);while(t+slotMin<=fin){sl.push(toStr(t));t+=slotMin;}slotsxCancha[ca.nombre]=sl.slice();});return slotsxCancha;}const slotsxCanchaxDia=[buildSlotsDia(0),buildSlotsDia(1),buildSlotsDia(2)];function nextHoraCancha(dia,cancha){const pool=slotsxCanchaxDia[dia][cancha];if(!pool||!pool.length)return'--:--';return pool.shift();}function faseidGrupo(ri){return['ronda1','ronda2','ronda3','ronda4','ronda5'][ri]||'ronda3';}function slot(g,pos){const grp=c.groups[g]||[];return grp[pos]&&grp[pos].name?grp[pos].name:(g+(pos+1));}function posGrupo(rank,g){const grp=c.groups[g]||[];const sizeG=sizes[gls.indexOf(g)]||4;if(grp.length>=sizeG && todosPartidosGrupoJugados(cat)){const tabla=calcPos(cat);const eq=tabla[g]&&tabla[g][rank-1];if(eq)return eq.name;}return['','1°','2°','3°','4°'][rank]+' Gr.'+g;}const partidos=[];let pidCounter=0;function addP(dia,faseid,homeLabel,awayLabel,extra){const pid=extra.grupo?'g_'+extra.grupo+'_r'+extra.ronda+'_'+(pidCounter++):(faseid+'_'+(pidCounter++));const ov=overrides[pid]||{};const diaAuto=dia;const canchaAuto=nextCanchaFase(faseid);const horaAuto=nextHoraCancha(diaAuto,canchaAuto);const diaFinal=ov.dia!==undefined?ov.dia:diaAuto;const horaFinal=ov.hora||horaAuto;const canchaFinal=ov.cancha||canchaAuto;const obs=ov.obs||'';partidos.push({pid,dia:diaFinal,hora:horaFinal,cancha:canchaFinal,obs,fase:faseid.startsWith('ronda')?'grupo':faseid,homeLabel,awayLabel,...extra,homoReal:!!(extra.grupo&&c.groups[extra.grupo]&&c.groups[extra.grupo][extra.i1||0]),awayReal:!!(extra.grupo&&c.groups[extra.grupo]&&c.groups[extra.grupo][extra.i2||1])});}[0,1].forEach(ri=>{gls.forEach((g,gi)=>{const rondas=rondasGrupo(sizes[gi]||4);if(ri>=rondas.length)return;rondas[ri].forEach(par=>{addP(0,faseidGrupo(ri),slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:ri+1,i1:par[0],i2:par[1]});});});});const rondasSab=maxSize<=4?[2]:[2,3];rondasSab.forEach(ri=>{gls.forEach((g,gi)=>{const rondas=rondasGrupo(sizes[gi]||4);if(ri>=rondas.length)return;rondas[ri].forEach(par=>{addP(1,faseidGrupo(ri),slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:ri+1,i1:par[0],i2:par[1]});});});});function crucePares(copa){const r1=copa==='oro'?1:3,r2=copa==='oro'?2:4;if(ng>=4)return[[r1,'A',r2,'B'],[r1,'B',r2,'A'],[r1,'C',r2,'D'],[r1,'D',r2,'C']];if(ng===3)return[[r1,'A',r2,'B'],[r1,'B',r2,'C'],[r1,'C',r2,'A']];return[[r1,'A',r2,'B'],[r1,'B',r2,'A']];}['oro','plata'].forEach(copa=>{const faseid=ng>=4?'cuartos-'+copa:'semi-'+copa;crucePares(copa).forEach(p=>{addP(1,faseid,posGrupo(p[0],p[1]),posGrupo(p[2],p[3]),{copa});});});if(maxSize===5){gls.forEach((g,gi)=>{if(sizes[gi]!==5)return;const rondas=rondasGrupo(5);if(!rondas[4])return;rondas[4].forEach(par=>{addP(2,'ronda5',slot(g,par[0]),slot(g,par[1]),{grupo:g,ronda:5,i1:par[0],i2:par[1]});});});}if(ng>=4){['oro','plata'].forEach(copa=>{const L=copa.charAt(0).toUpperCase();addP(2,'semi-'+copa,'Gan.C.'+L+'1','Gan.C.'+L+'2',{copa});addP(2,'semi-'+copa,'Gan.C.'+L+'3','Gan.C.'+L+'4',{copa});});}['oro','plata'].forEach(copa=>{const L=copa.charAt(0).toUpperCase();addP(2,'final-'+copa,'Gan.Semi '+L+'1','Gan.Semi '+L+'2',{copa});});return partidos;}
+// ── Helper: verifica si TODOS los partidos de grupo de una categoría tienen resultado ──
+function todosPartidosGrupoJugados(cat) {
+  const c = ed().cats[cat];
+  if (!c || !c.results) return false;
+  const partidos = buildFixturePartidos(cat);
+  const deGrupo = partidos.filter(p => p.fase === 'grupo' && p.homoReal && p.awayReal);
+  if (!deGrupo.length) return false;
+  return deGrupo.every(p => {
+    const key = `${p.grupo}|${p.homeLabel}|${p.awayLabel}|${p.ronda}`;
+    const r = (c.results || {})[key];
+    return r && r.h !== null && r.a !== null;
+  });
+}
+
 function calcPos(cat){const c=ed().cats[cat];const sizes=calcGruposCat(c.n,cat);const gls=GS.slice(0,sizes.length);const tabla={};gls.forEach(g=>{tabla[g]={};(c.groups[g]||[]).forEach(t=>{tabla[g][t.name]={pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,pts:0,shield:t.shield};});});if(c.results){const matches=genFixture(cat);if(matches)matches.forEach(m=>{if(m.phase!=='grupo')return;const key=`${m.group||''}|${m.home}|${m.away}|${m.ronda||''}`;const r=c.results[key];if(!r||r.h===null||r.a===null)return;const g=m.group;const h=parseInt(r.h),a=parseInt(r.a);if(!tabla[g]||!tabla[g][m.home]||!tabla[g][m.away])return;tabla[g][m.home].pj++;tabla[g][m.away].pj++;tabla[g][m.home].gf+=h;tabla[g][m.home].gc+=a;tabla[g][m.away].gf+=a;tabla[g][m.away].gc+=h;if(h>a){tabla[g][m.home].pg++;tabla[g][m.home].pts+=3;tabla[g][m.away].pp++;}else if(h<a){tabla[g][m.away].pg++;tabla[g][m.away].pts+=3;tabla[g][m.home].pp++;}else{tabla[g][m.home].pe++;tabla[g][m.home].pts+=1;tabla[g][m.away].pe++;tabla[g][m.away].pts+=1;}});}const result={};gls.forEach(g=>{result[g]=Object.entries(tabla[g]).map(([name,s])=>({name,...s,dif:s.gf-s.gc})).sort((a,b)=>b.pts-a.pts||b.dif-a.dif||b.gf-a.gf);});return result;}
 function renderPosiciones(){const cat=CATS[pCatIdx],c=ed().cats[cat];const el=document.getElementById('PC');const sizes=calcGruposCat(c.n,cat),gls=GS.slice(0,sizes.length);const incompletos=gls.filter((g,i)=>!c.groups[g]||c.groups[g].length<sizes[i]);if(incompletos.length>0){el.innerHTML=`<div class="fn" style="margin-top:14px;text-align:center;">⚠️ Completá el sorteo de <strong>${cat}</strong> primero.</div>`;return;}const tabla=calcPos(cat);const posOro=gls.length>=2?2:1;let html='<div class="pos-grid">';gls.forEach(g=>{const rows=tabla[g];html+=`<div class="pos-card" data-g="${g}"><div class="pos-header"><div class="pos-gl">G${g}</div><div class="gn" style="margin-left:6px">Grupo ${g}</div></div><table class="pos-t"><thead><tr><th>#</th><th>Equipo</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>DIF</th><th>PTS</th></tr></thead><tbody>`;rows.forEach((t,i)=>{const cls=i<posOro?'pos-oro':i>=posOro&&i<posOro+2?'pos-plata':'';html+=`<tr class="${cls}"><td class="pos-rank">${i+1}</td><td><div style="display:flex;align-items:center;gap:6px;">${t.shield?`<img class="tshield" src="${t.shield}">`:`<div class="tinit">${ini2n(t.name)}</div>`}<span class="pos-name">${t.name}</span></div></td><td>${t.pj}</td><td>${t.pg}</td><td>${t.pe}</td><td>${t.pp}</td><td>${t.gf}</td><td>${t.gc}</td><td>${t.dif>=0?'+'+t.dif:t.dif}</td><td class="pos-pts">${t.pts}</td></tr>`;});html+=`</tbody></table><div style="padding:5px 10px;font-size:10px;color:var(--muted2);display:flex;gap:10px;"><span>🟡 Copa Oro</span><span>⚪ Copa Plata</span></div></div>`;});html+='</div>';el.innerHTML=html;}
 function renderCruces(){try{_renderCruces();}catch(e){document.getElementById('CC').innerHTML=`<div class="fn" style="color:#ff6b6b;margin-top:14px;">❌ Error: ${e.message}</div>`;}}
@@ -3940,7 +4008,7 @@ function _renderCruces(){
   const tabla=sorteoCompleto?calcPos(cat):{};
 
   function resolverEq(pos,g){
-    if(sorteoCompleto&&tabla[g]&&tabla[g][pos-1]){
+    if(sorteoCompleto && todosPartidosGrupoJugados(cat) && tabla[g]&&tabla[g][pos-1]){
       const eq=tabla[g][pos-1];
       return{nombre:eq.name,shield:eq.shield||null,real:true};
     }
