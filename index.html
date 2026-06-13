@@ -68,6 +68,8 @@ if (window.location.protocol !== 'file:') {
   window.fbSave = async function(data) {
     try {
       const payload = JSON.parse(JSON.stringify(data));
+      // Usar el _updatedAt de app (no generar nuevo) para que loadFromFirebase compare bien
+      const ts = payload._updatedAt || Date.now();
       await setDoc(doc(db, 'torneo', 'estado'), {
         cur: payload.cur,
         fixtureColor: payload.fixtureColor || '#ffffff',
@@ -76,16 +78,17 @@ if (window.location.protocol !== 'file:') {
         escudo: payload.escudo || null,
         sponsors: payload.sponsors || [],
         driveId: payload.driveId || null,
-        updatedAt: Date.now()
+        updatedAt: ts,
+        _updatedAt: ts
       });
       if (payload.ediciones) {
         for (const ed of payload.ediciones) {
-          await setDoc(doc(db, 'torneo', ed.id), { ...ed, updatedAt: Date.now() });
+          await setDoc(doc(db, 'torneo', ed.id), { ...ed, updatedAt: ts, _updatedAt: ts });
         }
       }
       if (window._equiposDBRef && window._equiposDBRef.length > 0) {
         await setDoc(doc(db, 'config', 'equiposdb'), {
-          equipos: window._equiposDBRef, updatedAt: Date.now()
+          equipos: window._equiposDBRef, updatedAt: ts
         });
       }
       setSyncIndicator(true);
@@ -117,7 +120,8 @@ if (window.location.protocol !== 'file:') {
         escudo: estado.escudo || null,
         sponsors: estado.sponsors || [],
         driveId: estado.driveId || null,
-        _fbUpdatedAt: estado.updatedAt || 0
+        _updatedAt: estado._updatedAt || estado.updatedAt || 0,
+        _fbUpdatedAt: estado._updatedAt || estado.updatedAt || 0
       };
     } catch(e) {
       console.warn('fbLoad error:', e);
@@ -155,7 +159,11 @@ if (window.location.protocol !== 'file:') {
 
   window.fbListenGlobal = function(callback) {
     return onSnapshot(doc(db, 'torneo', 'estado'), snap => {
-      if (snap.exists()) callback(snap.data().updatedAt || 0);
+      if (snap.exists()) {
+        const d = snap.data();
+        // Devolver el timestamp que guardamos nosotros (_updatedAt o updatedAt)
+        callback(d._updatedAt || d.updatedAt || 0);
+      }
     });
   };
 
@@ -187,13 +195,16 @@ if (window.location.protocol !== 'file:') {
       if (fbData && fbData.ediciones && fbData.ediciones.length > 0) {
         const localRaw = localStorage.getItem('decFem_v7');
         const localData = localRaw ? JSON.parse(localRaw) : null;
-        const fbTime = fbData._fbUpdatedAt || 0;
+        // Usar _updatedAt (que ahora fbLoad devuelve igual que fbSave lo guarda)
+        const fbTime = fbData._updatedAt || fbData._fbUpdatedAt || 0;
         const localTime = localData ? (localData._updatedAt || 0) : 0;
 
-        if (!localData || fbTime >= localTime) {
+        if (!localData || fbTime > localTime) {
+          // Firebase tiene datos más nuevos → cargar de Firebase
           setLoadingMsg('Cargando datos del torneo…');
           if (window.loadFromFirebase) window.loadFromFirebase(fbData);
         } else {
+          // Local es igual o más reciente → usar local y subir a Firebase
           setLoadingMsg('Sincronizando…');
           if (window.initLocal) window.initLocal();
           setTimeout(() => { if (window.fbSave && window.app) window.fbSave(window.app); }, 500);
@@ -205,10 +216,11 @@ if (window.location.protocol !== 'file:') {
         setSyncIndicator(true);
       }
 
-      // Escuchar cambios en tiempo real
-      window.fbListenGlobal(fbTime => {
+      // Escuchar cambios en tiempo real de otros dispositivos
+      window.fbListenGlobal(fbTimestamp => {
         const localTime = window.app ? (window.app._updatedAt || 0) : 0;
-        if (fbTime > localTime + 3000) {
+        // Solo cargar si Firebase tiene algo MÁS RECIENTE que lo local (margen 3s)
+        if (fbTimestamp > localTime + 3000) {
           window.fbLoad().then(fbData => {
             if (fbData && window.loadFromFirebase) window.loadFromFirebase(fbData);
           });
@@ -3246,11 +3258,11 @@ let app=null;let seccion='equiposdb';let catIdx=0,fCatIdx=0,pCatIdx=0,cCatIdx=0;
 let mCat=0,mBuf={};let bfCatIdx=0,bfEq=null;let inscCatIdx=0;
 function save(){
   try{
-    app._updatedAt=Date.now();
-    // Asegurarse que sponsors siempre estén en app
+    // _updatedAt en milisegundos — clave para que loadFromFirebase sepa quién gana
+    app._updatedAt = Date.now();
     if(!app.sponsors) app.sponsors=[];
-    localStorage.setItem(KEY,JSON.stringify(app));
-    // Sync a Firebase (no bloqueante)
+    localStorage.setItem(KEY, JSON.stringify(app));
+    // Sync a Firebase — mandamos el mismo _updatedAt para que la comparación sea correcta
     if(window.fbSave) window.fbSave(app);
   }catch(e){console.warn('save error:',e);}
 }
@@ -3280,31 +3292,40 @@ function newEd(nom,anio,cfgCats,cfgCanchas){
   return{id,nombre:nom,anio,archived:false,config:{cats:catsCfg,canchas:canchasCfg},cats:catsData,bf,planillas:{}};
 }
 
-// loadFromFirebase — llamado desde el módulo de Firebase si hay datos más recientes
+// loadFromFirebase — llamado cuando Firebase tiene datos
+// REGLA: local SIEMPRE gana si tiene _updatedAt >= Firebase
 window.loadFromFirebase = function(fbData) {
   if (!fbData || !fbData.ediciones || !fbData.ediciones.length) return;
+
   const localRaw = localStorage.getItem(KEY);
   const localApp = localRaw ? JSON.parse(localRaw) : null;
-  app = { ...fbData };
-  if (!app.pins && localApp && localApp.pins) app.pins = localApp.pins;
-  if (!app.logo && localApp && localApp.logo) app.logo = localApp.logo;
-  if (!app.escudo && localApp && localApp.escudo) app.escudo = localApp.escudo;
-  if (!app.sponsors) app.sponsors = (localApp && localApp.sponsors) || [];
-  if (!app.driveId && localApp && localApp.driveId) app.driveId = localApp.driveId;
 
-  // Solo actualizar desde Firebase si es más reciente que lo local
-  // (margen de 2 segundos para evitar sobrescribir cambios recientes)
-  const localRaw2 = localStorage.getItem(KEY);
-  const localApp2 = localRaw2 ? JSON.parse(localRaw2) : null;
-  const localTime2 = localApp2 ? (localApp2._updatedAt || 0) : 0;
-  const fbTime2 = app._fbUpdatedAt || 0;
-  if (localTime2 > fbTime2 + 2000) {
-    // Local es más reciente — no pisar con Firebase
-    app = localApp2;
-    refreshDynamic();
-    if (modoActual === 'admin') { renderEdBar(); renderAll(); loadLogoEscudo(); }
+  // Obtener timestamps para decidir quién tiene la versión más nueva
+  const localTime = localApp ? (localApp._updatedAt || 0) : 0;
+  // Firebase puede guardar el timestamp en _updatedAt o _fbUpdatedAt
+  const fbTime = Math.max(fbData._updatedAt || 0, fbData._fbUpdatedAt || 0);
+
+  // Si local es igual o más reciente → ignorar Firebase, no tocar nada
+  if (localTime >= fbTime) {
+    // Igual reconectamos para futuras actualizaciones pero no cambiamos app
     return;
   }
+
+  // Firebase es más reciente → cargar sus datos
+  app = JSON.parse(JSON.stringify(fbData)); // deep copy
+
+  // Preservar datos que solo viven en local (imágenes grandes, PINs)
+  if (localApp) {
+    if (!app.pins && localApp.pins) app.pins = localApp.pins;
+    if (!app.logo && localApp.logo) app.logo = localApp.logo;
+    if (!app.escudo && localApp.escudo) app.escudo = localApp.escudo;
+    if (localApp.sponsors && localApp.sponsors.length > 0 && (!app.sponsors || app.sponsors.length === 0)) {
+      app.sponsors = localApp.sponsors;
+    }
+    if (!app.driveId && localApp.driveId) app.driveId = localApp.driveId;
+  }
+  if (!app.sponsors) app.sponsors = [];
+
   // Deduplicar ediciones por ID
   const seenIds = new Set();
   app.ediciones = app.ediciones.filter(e => {
@@ -3312,14 +3333,20 @@ window.loadFromFirebase = function(fbData) {
     seenIds.add(e.id);
     return true;
   });
+  if (app.ediciones.length === 0) return; // no debería pasar
   if (!app.ediciones.find(e => e.id === app.cur)) app.cur = app.ediciones[0].id;
 
+  // Actualizar equiposDB si Firebase trae datos nuevos
   if (window._fbEquiposDB && window._fbEquiposDB.length > 0) {
     equiposDB = window._fbEquiposDB;
     try { localStorage.setItem(DB_KEY, JSON.stringify(equiposDB)); } catch(e) {}
   }
   window._equiposDBRef = equiposDB;
+
+  // Guardar en local con el timestamp de Firebase para no volver a cargar
   localStorage.setItem(KEY, JSON.stringify(app));
+
+  // Redibujar
   refreshDynamic();
   if (modoActual === 'admin') { renderEdBar(); renderAll(); loadLogoEscudo(); }
   if (modoActual === 'espectador') renderEspectador();
